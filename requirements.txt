@@ -1,0 +1,6 @@
+# Databricks Runtime 14.3 LTS (Spark 3.5.1, Delta 3.2.0) - no pip install needed on cluster.
+pyspark==3.5.1
+delta-spark==3.2.0
+pytest==8.3.2
+ruff==0.5.6
+black==24.8.0
