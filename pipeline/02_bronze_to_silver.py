@@ -126,12 +126,35 @@ def transform_customers(spark: SparkSession) -> int:
         ).otherwise(None).alias("state"),
         F.initcap(F.trim(F.col("city"))).alias("city"),
         F.trim(F.col("district")).alias("county"),          # district → county
-        F.col("postcode").cast("double").cast("int").alias("zip_code"),    # postcode → zip_code
+        # Handle multiple postcode formats: '7601', '7601.0', '95014-1703', '24502 - Lynchburg'
+        # Use regexp_extract to get first numeric segment before space/hyphen
+        F.coalesce(
+            # Extract leading digits, handling decimal point, hyphens, spaces
+            F.when(F.col("postcode").rlike(r"^\d+\.\d+"),
+                   F.col("postcode").cast("double").cast("int")),
+            # Extract first numeric segment from any format
+            F.regexp_extract(F.col("postcode"), r"^(\d+)", 1).cast("int")
+        ).alias("zip_code"),
         F.col("lat").cast("double").alias("latitude"),
         F.col("lon").cast("double").alias("longitude"),
         F.col("loyalty_segment").cast("int").alias("loyalty_segment"),
+<<<<<<< Updated upstream
         F.col("valid_from").cast("long").cast("timestamp").alias("valid_from"),
         F.col("valid_to").cast("long").cast("timestamp").alias("valid_to"),
+=======
+        # Handle timestamps - could be string dates, Unix epoch integers, or Unix epoch with decimals
+        F.coalesce(
+            # Unix epoch (with or without decimal): 10-13 digits, optionally followed by .0
+            F.when(F.col("valid_from").rlike(r"^\d{10,13}(\.\d+)?$"), 
+                   F.from_unixtime(F.col("valid_from").cast("double").cast("bigint")).cast("timestamp")),
+            F.to_timestamp("valid_from")
+        ).alias("valid_from"),
+        F.coalesce(
+            F.when(F.col("valid_to").rlike(r"^\d{10,13}(\.\d+)?$"), 
+                   F.from_unixtime(F.col("valid_to").cast("double").cast("bigint")).cast("timestamp")),
+            F.to_timestamp("valid_to")
+        ).alias("valid_to"),
+>>>>>>> Stashed changes
     )
 
     # 4. Add audit columns
