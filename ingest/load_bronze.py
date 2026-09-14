@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 """
 load_bronze.py
 Author: Data Engineer
@@ -118,6 +122,7 @@ def load_products_bronze(spark: SparkSession) -> int:
         .schema(PRODUCTS_SCHEMA)
         .csv(path)
     )
+
     
     df = add_metadata(df, path)
     
