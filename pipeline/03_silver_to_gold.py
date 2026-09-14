@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 """
 03_silver_to_gold.py — Silver → Gold Transformation Pipeline
 
@@ -115,7 +119,7 @@ def build_dim_customer(spark: SparkSession) -> int:
         .agg(
             F.min(F.to_date("order_datetime")).alias("first_order_date"),
             F.max(F.to_date("order_datetime")).alias("last_order_date"),
-            F.countDistinct("order_number").alias("total_orders"),
+            F.countDistinct("order_number").cast("int").alias("total_orders"),
             F.sum("quantity").cast("int").alias("total_items_purchased"),
             F.round(F.sum("line_total"), 2).cast(DecimalType(12, 2)).alias("total_spend"),
         )

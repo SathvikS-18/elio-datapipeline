@@ -115,7 +115,7 @@ def transform_customers(spark: SparkSession) -> int:
     if df_rejected.count() > 0:
         print(f"⚠️  Rejected {df_rejected.count()} rows with null customer_id")
 
-    # 3. Clean & cast
+        # 3. Clean & cast
     transformed = df_valid.select(
         F.col("customer_id").cast("bigint").alias("customer_id"),
         F.initcap(F.trim(F.col("customer_name"))).alias("customer_name"),
@@ -126,35 +126,35 @@ def transform_customers(spark: SparkSession) -> int:
         ).otherwise(None).alias("state"),
         F.initcap(F.trim(F.col("city"))).alias("city"),
         F.trim(F.col("district")).alias("county"),          # district → county
-        # Handle multiple postcode formats: '7601', '7601.0', '95014-1703', '24502 - Lynchburg'
-        # Use regexp_extract to get first numeric segment before space/hyphen
+        
+        # Handle multiple postcode formats and empty strings
         F.coalesce(
-            # Extract leading digits, handling decimal point, hyphens, spaces
             F.when(F.col("postcode").rlike(r"^\d+\.\d+"),
                    F.col("postcode").cast("double").cast("int")),
-            # Extract first numeric segment from any format
-            F.regexp_extract(F.col("postcode"), r"^(\d+)", 1).cast("int")
+            F.nullif(F.regexp_extract(F.col("postcode"), r"^(\d+)", 1), F.lit("")).cast("int")
         ).alias("zip_code"),
-        F.col("lat").cast("double").alias("latitude"),
-        F.col("lon").cast("double").alias("longitude"),
-        F.col("loyalty_segment").cast("int").alias("loyalty_segment"),
-<<<<<<< Updated upstream
-        F.col("valid_from").cast("long").cast("timestamp").alias("valid_from"),
-        F.col("valid_to").cast("long").cast("timestamp").alias("valid_to"),
-=======
-        # Handle timestamps - could be string dates, Unix epoch integers, or Unix epoch with decimals
+        
+        # Nullify empty strings before casting to avoid CAST_INVALID_INPUT
+        F.nullif(F.col("lat"), F.lit("")).cast("double").alias("latitude"),
+        F.nullif(F.col("lon"), F.lit("")).cast("double").alias("longitude"),
+        F.nullif(F.col("loyalty_segment"), F.lit("")).cast("int").alias("loyalty_segment"),
+        
+                # Handle timestamps - parse epoch safely, and hide epochs from to_timestamp to prevent crashes
         F.coalesce(
-            # Unix epoch (with or without decimal): 10-13 digits, optionally followed by .0
             F.when(F.col("valid_from").rlike(r"^\d{10,13}(\.\d+)?$"), 
                    F.from_unixtime(F.col("valid_from").cast("double").cast("bigint")).cast("timestamp")),
-            F.to_timestamp("valid_from")
+            F.to_timestamp(
+                F.when(~F.col("valid_from").rlike(r"^\d{10,13}(\.\d+)?$"), F.nullif(F.col("valid_from"), F.lit("")))
+            )
         ).alias("valid_from"),
+        
         F.coalesce(
             F.when(F.col("valid_to").rlike(r"^\d{10,13}(\.\d+)?$"), 
                    F.from_unixtime(F.col("valid_to").cast("double").cast("bigint")).cast("timestamp")),
-            F.to_timestamp("valid_to")
+            F.to_timestamp(
+                F.when(~F.col("valid_to").rlike(r"^\d{10,13}(\.\d+)?$"), F.nullif(F.col("valid_to"), F.lit("")))
+            )
         ).alias("valid_to"),
->>>>>>> Stashed changes
     )
 
     # 4. Add audit columns
@@ -189,11 +189,22 @@ def transform_orders(spark: SparkSession) -> int:
     """
     df = spark.table(f"{BRONZE}.raw_sales_orders")
 
-    # 1. Select order-header fields & cast
+    
+
+     # 1. Select order-header fields & cast
     orders = df.select(
         F.col("order_number").cast("bigint").alias("order_number"),
         F.col("customer_id").cast("bigint").alias("customer_id"),
-        F.to_timestamp("order_datetime").alias("order_datetime"),
+        
+        # Handle order_datetime Unix epochs exactly like we did for customers
+        F.coalesce(
+            F.when(F.col("order_datetime").rlike(r"^\d{10,13}(\.\d+)?$"), 
+                   F.from_unixtime(F.col("order_datetime").cast("double").cast("bigint")).cast("timestamp")),
+            F.to_timestamp(
+                F.when(~F.col("order_datetime").rlike(r"^\d{10,13}(\.\d+)?$"), F.nullif(F.col("order_datetime"), F.lit("")))
+            )
+        ).alias("order_datetime"),
+        
         F.col("number_of_line_items").cast("int").alias("number_of_line_items"),
     ).filter(F.col("order_number").isNotNull())
 
@@ -241,7 +252,7 @@ def transform_order_items(spark: SparkSession) -> int:
         F.posexplode("ordered_products").alias("item_seq", "product"),
     ).filter(F.col("order_number").isNotNull())
 
-    # 2. Extract struct fields and cast
+        # 2. Extract struct fields and cast
     transformed = exploded.select(
         "order_number",
         (F.col("item_seq") + 1).cast("int").alias("item_seq"),  # 1-based
@@ -249,10 +260,10 @@ def transform_order_items(spark: SparkSession) -> int:
         F.trim(F.col("product.name")).alias("product_name"),
         F.col("product.qty").cast("int").alias("quantity"),
         F.col("product.price").cast(DecimalType(10, 2)).alias("unit_price"),
-        F.coalesce(
-            F.col("product.unit_discount").cast(DecimalType(10, 2)),
-            F.lit(0.00).cast(DecimalType(10, 2)),
-        ).alias("unit_discount"),
+        
+        # Hardcode unit_discount to 0.00 since the field doesn't exist in the raw JSON
+        F.lit(0.00).cast(DecimalType(10, 2)).alias("unit_discount"), 
+        
         F.col("product.curr").alias("currency"),
         F.to_json("product.promotion_info").alias("promotion_info"),
     )
