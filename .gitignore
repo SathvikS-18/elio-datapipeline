@@ -16,3 +16,15 @@ venv/
 *.log
 checkpoint/
 spark-warehouse/
+
+# Interview prep files — do NOT commit to submission repo
+BEGINNER_PROBE_SURVIVAL_GUIDE.md
+CODE_WALKTHROUGH.md
+DATA_ENGINEERING_MASTER_HANDBOOK.md
+LIVE_PROBE_PREP.md
+TECHNICAL_PROBE_SCENARIOS.md
+TECHNICAL_PROBE_15_QA.md
+TWO_BRANCH_GIT_WORKFLOW.md
+Technical_Assessment_Data_AI_Engineer_Databricks.pdf
+DATASET_AND_DECISIONS.txt
+PIPELINE_EXPLAINED_SIMPLE.txt
