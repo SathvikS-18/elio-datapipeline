@@ -21,9 +21,13 @@ import pyspark.sql.functions as F
 from pyspark.sql import SparkSession
 from pyspark.sql.types import DecimalType
 
-# Support both Databricks notebook and local execution
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-sys.path.insert(0, os.path.dirname(__file__))
+try:
+    # Support both Databricks notebook and local execution
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    sys.path.insert(0, os.path.dirname(__file__))
+except NameError:
+    # In Databricks, sys.path is managed by Git Folders or root workspace.
+    pass
 
 from utils.transforms import deduplicate, add_audit_columns, validate_not_null
 from utils.quality import check_null_rate, check_row_count, run_quality_suite
@@ -77,8 +81,8 @@ def transform_customers(spark: SparkSession) -> int:
         F.col("lat").cast("double").alias("latitude"),
         F.col("lon").cast("double").alias("longitude"),
         F.col("loyalty_segment").cast("int").alias("loyalty_segment"),
-        F.to_timestamp("valid_from").alias("valid_from"),
-        F.to_timestamp("valid_to").alias("valid_to"),
+        F.col("valid_from").cast("long").cast("timestamp").alias("valid_from"),
+        F.col("valid_to").cast("long").cast("timestamp").alias("valid_to"),
     )
 
     # 4. Add audit columns

@@ -29,8 +29,11 @@ import pyspark.sql.functions as F
 from pyspark.sql import SparkSession
 from pyspark.sql.types import DecimalType
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-sys.path.insert(0, os.path.dirname(__file__))
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    sys.path.insert(0, os.path.dirname(__file__))
+except NameError:
+    pass
 
 from utils.quality import check_referential_integrity, check_row_count, run_quality_suite
 
