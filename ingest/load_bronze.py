@@ -17,7 +17,7 @@ Assumptions:
 
 import time
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import lit, current_timestamp, sha2, concat_ws, col
+from pyspark.sql.functions import lit, current_timestamp, sha2, to_json, struct, col
 
 from config import (
     CATALOG, BRONZE_SCHEMA, SOURCE_PATHS, full_table_name,
@@ -38,10 +38,12 @@ def create_bronze_schemas(spark: SparkSession):
 
 def add_metadata(df, source_name: str):
     """Adds auditing metadata to the dataframe."""
-    return df \
-        .withColumn("_source_file", lit(source_name)) \
-        .withColumn("_ingested_at", current_timestamp()) \
-        .withColumn("_raw_row_hash", sha2(concat_ws("||", *[col(c) for c in df.columns]), 256))
+    return (
+        df
+        .withColumn("_source_file", lit(source_name))
+        .withColumn("_ingested_at", current_timestamp())
+        .withColumn("_raw_row_hash", sha2(to_json(struct(*[col(c) for c in df.columns])), 256))
+    )
 
 # COMMAND ----------
 
@@ -51,20 +53,24 @@ def load_customers_bronze(spark: SparkSession) -> int:
     path = SOURCE_PATHS['customers']
     table_name = full_table_name(BRONZE_SCHEMA, 'raw_customers')
     
-    df = spark.read \
-        .option("header", "true") \
-        .option("mode", "PERMISSIVE") \
-        .option("columnNameOfCorruptRecord", "_corrupt_record") \
-        .schema(CUSTOMERS_SCHEMA) \
+    df = (
+        spark.read
+        .option("header", "true")
+        .option("mode", "PERMISSIVE")
+        .option("columnNameOfCorruptRecord", "_corrupt_record")
+        .schema(CUSTOMERS_SCHEMA)
         .csv(path)
+    )
     
     df = add_metadata(df, path)
     
-    df.write \
-        .format("delta") \
-        .mode("overwrite") \
-        .option("mergeSchema", "true") \
+    (
+        df.write
+        .format("delta")
+        .mode("overwrite")
+        .option("mergeSchema", "true")
         .saveAsTable(table_name)
+    )
     
     return spark.table(table_name).count()
 
@@ -77,18 +83,22 @@ def load_sales_orders_bronze(spark: SparkSession) -> int:
     table_name = full_table_name(BRONZE_SCHEMA, 'raw_sales_orders')
     
     # JSON schema inferred, multiLine=False by default for standard JSON lines
-    df = spark.read \
-        .option("mode", "PERMISSIVE") \
-        .option("columnNameOfCorruptRecord", "_corrupt_record") \
+    df = (
+        spark.read
+        .option("mode", "PERMISSIVE")
+        .option("columnNameOfCorruptRecord", "_corrupt_record")
         .json(path)
+    )
     
     df = add_metadata(df, path)
     
-    df.write \
-        .format("delta") \
-        .mode("overwrite") \
-        .option("mergeSchema", "true") \
+    (
+        df.write
+        .format("delta")
+        .mode("overwrite")
+        .option("mergeSchema", "true")
         .saveAsTable(table_name)
+    )
     
     return spark.table(table_name).count()
 
@@ -100,20 +110,24 @@ def load_products_bronze(spark: SparkSession) -> int:
     path = SOURCE_PATHS['products']
     table_name = full_table_name(BRONZE_SCHEMA, 'raw_products')
     
-    df = spark.read \
-        .option("header", "true") \
-        .option("mode", "PERMISSIVE") \
-        .option("columnNameOfCorruptRecord", "_corrupt_record") \
-        .schema(PRODUCTS_SCHEMA) \
+    df = (
+        spark.read
+        .option("header", "true")
+        .option("mode", "PERMISSIVE")
+        .option("columnNameOfCorruptRecord", "_corrupt_record")
+        .schema(PRODUCTS_SCHEMA)
         .csv(path)
+    )
     
     df = add_metadata(df, path)
     
-    df.write \
-        .format("delta") \
-        .mode("overwrite") \
-        .option("mergeSchema", "true") \
+    (
+        df.write
+        .format("delta")
+        .mode("overwrite")
+        .option("mergeSchema", "true")
         .saveAsTable(table_name)
+    )
     
     return spark.table(table_name).count()
 
