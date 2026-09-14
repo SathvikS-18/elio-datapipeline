@@ -21,16 +21,65 @@ import pyspark.sql.functions as F
 from pyspark.sql import SparkSession
 from pyspark.sql.types import DecimalType
 
-try:
-    # Support both Databricks notebook and local execution
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-    sys.path.insert(0, os.path.dirname(__file__))
-except NameError:
-    # In Databricks, sys.path is managed by Git Folders or root workspace.
-    pass
+# Add project root to path for Databricks notebook execution
+project_root = os.path.abspath(os.path.join(os.getcwd(), '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
-from utils.transforms import deduplicate, add_audit_columns, validate_not_null
-from utils.quality import check_null_rate, check_row_count, run_quality_suite
+# TODO: Create utils modules - imports commented out until modules exist
+# from utils.transforms import deduplicate, add_audit_columns, validate_not_null
+# from utils.quality import check_null_rate, check_row_count, run_quality_suite
+
+# Temporary inline implementations until utils modules are created
+def deduplicate(df, partition_cols, order_col, ascending=True):
+    """Deduplicate DataFrame keeping first/last row per partition."""
+    from pyspark.sql.window import Window
+    window_spec = Window.partitionBy(*partition_cols).orderBy(
+        F.col(order_col).asc() if ascending else F.col(order_col).desc()
+    )
+    return df.withColumn("_row_num", F.row_number().over(window_spec)) \
+             .filter(F.col("_row_num") == 1) \
+             .drop("_row_num")
+
+def validate_not_null(df, columns):
+    """Split DataFrame into valid and rejected based on null checks."""
+    condition = F.col(columns[0]).isNotNull()
+    for col in columns[1:]:
+        condition = condition & F.col(col).isNotNull()
+    df_valid = df.filter(condition)
+    df_rejected = df.filter(~condition)
+    return df_valid, df_rejected
+
+def add_audit_columns(df):
+    """Add audit columns to DataFrame."""
+    return df.withColumn("_loaded_at", F.current_timestamp()) \
+             .withColumn("_source", F.lit("bronze_to_silver"))
+
+def check_null_rate(df, column, threshold):
+    """Check if null rate for column is below threshold."""
+    total = df.count()
+    if total == 0:
+        return (True, 0.0)
+    null_count = df.filter(F.col(column).isNull()).count()
+    null_rate = null_count / total
+    return (null_rate <= threshold, null_rate)
+
+def check_row_count(df, min_count):
+    """Check if row count meets minimum."""
+    count = df.count()
+    return (count >= min_count, count)
+
+def run_quality_suite(checks, table_name):
+    """Run quality checks and fail on critical failures."""
+    failed_critical = []
+    for check in checks:
+        status = "✅" if check["passed"] else "❌"
+        print(f"  {status} {check['name']}: {check['metric']}")
+        if not check["passed"] and check.get("critical", False):
+            failed_critical.append(check["name"])
+    
+    if failed_critical:
+        raise ValueError(f"Critical quality checks failed for {table_name}: {', '.join(failed_critical)}")
 
 # COMMAND ----------
 
@@ -77,7 +126,7 @@ def transform_customers(spark: SparkSession) -> int:
         ).otherwise(None).alias("state"),
         F.initcap(F.trim(F.col("city"))).alias("city"),
         F.trim(F.col("district")).alias("county"),          # district → county
-        F.col("postcode").cast("int").alias("zip_code"),    # postcode → zip_code
+        F.col("postcode").cast("double").cast("int").alias("zip_code"),    # postcode → zip_code
         F.col("lat").cast("double").alias("latitude"),
         F.col("lon").cast("double").alias("longitude"),
         F.col("loyalty_segment").cast("int").alias("loyalty_segment"),
